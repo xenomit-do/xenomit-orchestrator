@@ -39,6 +39,9 @@
 !xenomit-orchestrator/operator/**
 !xenomit-orchestrator/control-gateway/**
 !xenomit-orchestrator/orchestrator-api/**
+!xenomit-orchestrator/orchestratord/**
+!xenomit-orchestrator/plans/**
+!xenomit-orchestrator/e2e/**
 
 # --- xenomit-web-panel image (ci/docker/Dockerfile.web-panel) -------------
 !xenomit-web-panel/**
