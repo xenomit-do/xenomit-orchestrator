@@ -1,0 +1,33 @@
+[package]
+name = "orchestrator-api"
+description = "axum REST admin API for the Xenomit fleet: JWT auth, bot lifecycle, SSE lifecycle events, OpenAPI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+axum = { version = "0.8", features = ["macros"] }
+chrono.workspace = true
+control-gateway.workspace = true
+fleet-types.workspace = true
+futures.workspace = true
+jsonwebtoken = { version = "11", default-features = false, features = ["rust_crypto", "use_pem"] }
+kube.workspace = true
+operator.workspace = true
+plans.workspace = true
+rand.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tracing.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+ed25519-dalek = { version = "2", features = ["rand_core", "pkcs8"] }
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }

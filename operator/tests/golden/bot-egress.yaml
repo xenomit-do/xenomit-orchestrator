@@ -1,0 +1,73 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: xenomit-operator
+    xenomit.io/bot: bot-7
+    xenomit.io/tenant: user_abc
+  name: bot-bot-7-egress
+  namespace: xenomit-bots
+spec:
+  egress:
+  - ports:
+    - port: 1080
+      protocol: TCP
+    to:
+    - ipBlock:
+        cidr: 203.0.113.9/32
+  - ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+    to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+  - ports:
+    - port: 8443
+      protocol: TCP
+    to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: xenomit-system
+      podSelector:
+        matchLabels:
+          xenomit.io/component: gateway
+  - ports:
+    - port: 3000
+      protocol: TCP
+    to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: xenomit-system
+      podSelector:
+        matchLabels:
+          xenomit.io/component: panel
+  - ports:
+    - port: 4317
+      protocol: TCP
+    to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: observability
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: opentelemetry-collector
+  - ports:
+    - port: 8200
+      protocol: TCP
+    to:
+    - ipBlock:
+        cidr: 192.168.65.2/32
+  - ports:
+    - port: 4317
+      protocol: TCP
+    to:
+    - ipBlock:
+        cidr: 10.42.0.0/16
+  podSelector:
+    matchLabels:
+      xenomit.io/bot: bot-7
+  policyTypes:
+  - Egress

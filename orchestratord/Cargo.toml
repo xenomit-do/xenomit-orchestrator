@@ -1,0 +1,43 @@
+[package]
+name = "orchestratord"
+description = "Single-process Xenomit control plane: BotController driver, control gateway, admin API and (in local mode) a file-backed dev Vault — the same binary shape local dev and the control-plane Deployment run"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "xenomit-orchestratord"
+path = "src/main.rs"
+
+[features]
+default = []
+# Production snapshot store (ops/k8s/30-postgres.yaml). Local dev uses the
+# in-memory store and never links sqlx.
+postgres = ["control-gateway/postgres"]
+
+[dependencies]
+async-trait.workspace = true
+axum = { version = "0.8" }
+control-gateway.workspace = true
+fleet-types.workspace = true
+k8s-openapi.workspace = true
+kube = { workspace = true, features = ["client"] }
+operator.workspace = true
+orchestrator-api = { path = "../orchestrator-api" }
+rand.workspace = true
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+    "json",
+] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["signal"] }
+tokio-stream.workspace = true
+tonic.workspace = true
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+zeroize.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

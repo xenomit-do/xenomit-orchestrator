@@ -1,0 +1,173 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: proxies.fleet.xenomit.io
+spec:
+  group: fleet.xenomit.io
+  names:
+    kind: Proxy
+    plural: proxies
+    shortNames:
+    - xpx
+    singular: proxy
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.scheme
+      name: Scheme
+      type: string
+    - jsonPath: .spec.host
+      name: Host
+      type: string
+    - jsonPath: .status.healthy
+      name: Healthy
+      type: string
+    - jsonPath: .status.assigned
+      name: Bots
+      type: integer
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for ProxySpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              capacity:
+                default: 1
+                description: |-
+                  Max concurrent bots on this proxy; residential defaults to 1
+                  (docs/05 §5.4).
+                format: uint32
+                minimum: 0.0
+                type: integer
+              country:
+                nullable: true
+                type: string
+              credentialsVaultPath:
+                description: |-
+                  Vault path of the proxy credentials (`secret/data/proxies/<id>`);
+                  never a CR field (docs/05 §5.6).
+                type: string
+              host:
+                type: string
+              isp:
+                nullable: true
+                type: string
+              port:
+                format: uint16
+                maximum: 65535.0
+                minimum: 0.0
+                type: integer
+              scheme:
+                enum:
+                - http
+                - https
+                - socks5
+                type: string
+              tags:
+                default: []
+                description: |-
+                  e.g. ["residential"], ["datacenter"]. `country` is separate because
+                  selectors match on it directly (docs/04 §4.1).
+                items:
+                  type: string
+                type: array
+            required:
+            - credentialsVaultPath
+            - host
+            - port
+            - scheme
+            type: object
+          status:
+            nullable: true
+            properties:
+              assigned:
+                default: []
+                description: Bot names currently assigned (capacity accounting).
+                items:
+                  type: string
+                type: array
+              conditions:
+                default: []
+                items:
+                  description: |-
+                    A status condition, shaped like metav1.Condition but self-contained so
+                    fleet-types doesn't depend on k8s-openapi for schema generation.
+                  properties:
+                    lastTransitionUnixMs:
+                      description: Unix milliseconds of the last transition.
+                      format: int64
+                      nullable: true
+                      type: integer
+                    message:
+                      nullable: true
+                      type: string
+                    reason:
+                      nullable: true
+                      type: string
+                    status:
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+              consecutiveFailures:
+                default: 0
+                format: uint32
+                minimum: 0.0
+                type: integer
+              exitIp:
+                description: Observed exit IP, recorded per assignment (docs/05 §5.4).
+                nullable: true
+                type: string
+              healthy:
+                default: false
+                description: Three consecutive failed probes mark it unhealthy (docs/05 §5.4).
+                type: boolean
+              lastProbeAtUnixMs:
+                format: int64
+                nullable: true
+                type: integer
+              lastTenant:
+                description: |-
+                  Tenant that last used this proxy; the cooldown above applies to
+                  *other* tenants only.
+                nullable: true
+                type: string
+              latencyMs:
+                format: uint32
+                minimum: 0.0
+                nullable: true
+                type: integer
+              resolvedIps:
+                default: []
+                description: |-
+                  IPs `spec.host` last resolved to (health prober records them); the
+                  per-bot egress NetworkPolicy is rendered from the first entry
+                  (ops/k8s/20-bot-egress.template.yaml).
+                items:
+                  type: string
+                type: array
+              tenantCooldownUntilUnixMs:
+                description: |-
+                  Don't reassign to a different tenant before this time (IP-reputation
+                  cooldown, docs/05 §5.4).
+                format: int64
+                nullable: true
+                type: integer
+            type: object
+        required:
+        - spec
+        title: Proxy
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
