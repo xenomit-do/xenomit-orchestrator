@@ -1,0 +1,98 @@
+# Rust lint + unit/contract matrix (docs/07 §7.2 stages 1–2).
+#
+# Placement: this file belongs at <repo-root>/.github/workflows/rust.yml once
+# the repos folder becomes a git repository (docs/10 roadmap note). It assumes
+# a monorepo layout with each xenomit-* crate as a sibling directory.
+#
+# Runner: vars.CI_RUNNER — set to `xenomit` (the ARC scale set) or
+# `ubuntu-latest` on hosted runners. Self-hosted runners must only ever run
+# workflows from this private repo (docs/07 §7.1a hard rule).
+name: rust
+
+on:
+  pull_request:
+    paths:
+      - "xenomit-*/Cargo.toml"
+      - "xenomit-*/Cargo.lock"
+      - "xenomit-*/build.rs"
+      - "xenomit-*/src/**"
+      - "xenomit-*/tests/**"
+      - "xenomit-*/benches/**"
+      - "xenomit-*/schema/**"
+      - "**/*.proto"
+      - "ci/workflows/rust.yml"
+      - ".github/workflows/rust.yml"
+  push:
+    branches: [main]
+    paths:
+      - "xenomit-*/Cargo.toml"
+      - "xenomit-*/Cargo.lock"
+      - "xenomit-*/build.rs"
+      - "xenomit-*/src/**"
+      - "xenomit-*/tests/**"
+      - "xenomit-*/benches/**"
+      - "xenomit-*/schema/**"
+      - "**/*.proto"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  lint-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ vars.CI_RUNNER || 'self-hosted' }}
+    timeout-minutes: 45
+    container:
+      # Same toolchain as ci/docker/Dockerfile.* build stages.
+      image: rust:1.88-bookworm
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: botd
+            dir: xenomit-botd
+          - name: orchestrator
+            dir: xenomit-orchestrator
+    steps:
+      - uses: actions/checkout@v4
+
+      # Warm CARGO_HOME + per-crate target dir on the GitHub cache. A
+      # persistent sccache volume on the runner is the documented upgrade
+      # (docs/07 §7.1a) — keep both.
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ matrix.dir }}/target
+          key: cargo-${{ matrix.name }}-${{ hashFiles(format('{0}/Cargo.lock', matrix.dir)) }}
+          restore-keys: |
+            cargo-${{ matrix.name }}-
+
+      - name: fmt
+        working-directory: ${{ matrix.dir }}
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        working-directory: ${{ matrix.dir }}
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: check
+        working-directory: ${{ matrix.dir }}
+        run: cargo check --workspace --locked
+
+      # Unit + contract tests: botd's mock_game suite (handoff/kill-matrix
+      # grows into docs/03 §3.10), orchestrator workspace tests.
+      - name: test
+        working-directory: ${{ matrix.dir }}
+        run: cargo test --workspace --locked

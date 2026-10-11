@@ -1,0 +1,27 @@
+[package]
+name = "plans"
+description = "Plans, quotas, metering and retention for the Xenomit fleet (docs/12): data model, quota engine, hourly usage aggregation, purge job, showback, BillingProvider seam"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+fleet-types.workspace = true
+hex.workspace = true
+operator.workspace = true
+rand.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+kube.workspace = true
+tokio.workspace = true

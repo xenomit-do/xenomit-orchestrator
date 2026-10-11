@@ -1,0 +1,158 @@
+// Control-plane protocol for the Xenomit fleet (docs/04 §4.5).
+//
+// One bidirectional stream per bot, opened by the bot so pods need no inbound
+// ports. The stream is reliable, ordered and authoritative; the lossy 4 Hz
+// data plane (Agent Protocol v1 to the panel) is deliberately separate
+// (docs/01 §1.2, ADR-06).
+//
+// Every message that mutates durable state carries the bot's epoch; the
+// gateway fences any write whose epoch is not the CR's status.epoch
+// (docs/03 §3.7, ADR-12).
+
+syntax = "proto3";
+
+package xenomit.fleet.v1alpha1;
+
+// The only RPC: the bot opens the stream with Hello and keeps it for the
+// lifetime of the process.
+service FleetControl {
+  rpc Session(stream ClientEvent) returns (stream GatewayCommand);
+}
+
+// ---------------------------------------------------------------------------
+// bot -> gateway
+// ---------------------------------------------------------------------------
+
+message ClientEvent {
+  oneof event {
+    Hello hello = 1;
+    LeaseRenew lease_renew = 2;
+    Checkpoint checkpoint = 3;
+    PutSnapshot put_snapshot = 4;
+    PhaseChanged phase_changed = 5;
+    MetricAlert metric_alert = 6;
+    Drained drained = 7;
+  }
+}
+
+// First message on a stream. The gateway compares `epoch` with the CR's
+// status.epoch; a mismatch is answered with `Fenced` and the stream is
+// closed (the bot exits 67 without touching the game).
+message Hello {
+  string bot_id = 1;
+  uint64 epoch = 2;
+  string botd_version = 3;   // e.g. "0.7.2"
+  string phase = 4;          // BotPhase, lowercase (e.g. "armed")
+  string traceparent = 5;    // W3C trace context
+}
+
+// Heartbeat + per-bot Lease renewal in one (docs/03 §3.7: TTL 30 s).
+message LeaseRenew {
+  uint64 epoch = 1;
+  uint64 lease_seq = 2; // monotonic per stream, lets the gw detect reordering
+}
+
+// Periodic `quality=checkpoint` snapshot (docs/03 §3.8), sent every
+// checkpoint_interval_s and on every step transition. `snapshot` is a
+// serialized BotSnapshot JSON document, <= 256 KiB.
+message Checkpoint {
+  uint64 epoch = 1;
+  bytes snapshot = 2;
+}
+
+// Terminal snapshot written during a drain, before logout (docs/03 §3.2).
+message PutSnapshot {
+  uint64 epoch = 1;
+  string quality = 2; // "clean" | "degraded"
+  bytes snapshot = 3;
+}
+
+// The bot's lifecycle phase changed (docs/01 §1.4). `phase` is a BotPhase
+// value; `detail` carries e.g. the NeedsHuman kind or restore quality.
+message PhaseChanged {
+  uint64 epoch = 1;
+  string phase = 2;
+  string detail = 3;
+}
+
+// Metric/alert passthrough (details live in docs/06; opaque here).
+message MetricAlert {
+  uint64 epoch = 1;
+  string name = 2;
+  string severity = 3;
+  string message = 4;
+}
+
+// The old epoch finished draining: snapshot committed, outbox flushed,
+// logged out (docs/03 §3.2). The operator may now Activate the successor.
+message Drained {
+  uint64 epoch = 1;
+  string snapshot_id = 2; // empty if the drain produced no snapshot
+  bool clean = 3;
+}
+
+// ---------------------------------------------------------------------------
+// gateway -> bot
+// ---------------------------------------------------------------------------
+
+message GatewayCommand {
+  oneof command {
+    Activate activate = 1;
+    Drain drain = 2;
+    ApplyConfig apply_config = 3;
+    Pause pause = 4;
+    Resume resume = 5;
+    Shutdown shutdown = 6;
+    Fenced fenced = 7;
+    Ack ack = 8;
+  }
+}
+
+// Release an Armed pod to log in. A new pod never logs in before this
+// message (docs/03 §3.7). `snapshot_id` is the restore source, empty for a
+// fresh start.
+message Activate {
+  uint64 epoch = 1;
+  string snapshot_id = 2;
+}
+
+// Ask the bot to reach a safe point, snapshot, flush and log out
+// (docs/03 §3.2). `reason` is a HandoffReason value.
+message Drain {
+  string reason = 1;
+  uint32 drain_deadline_s = 2;
+  uint32 hard_deadline_s = 3;
+  string traceparent = 4;
+}
+
+// Hot-applicable config edit pushed in place (docs/04 §4.5). `settings_json`
+// is a serialized BotSettings document at `revision`.
+message ApplyConfig {
+  uint64 revision = 1;
+  string settings_json = 2;
+}
+
+message Pause {
+  string reason = 1;
+}
+
+message Resume {
+  string reason = 1;
+}
+
+message Shutdown {
+  string reason = 1;
+}
+
+// The bot's epoch is stale; it must exit 67 without touching the game.
+message Fenced {
+  uint64 expected_epoch = 1;
+  uint64 got_epoch = 2;
+}
+
+// Ack for a committed Checkpoint/PutSnapshot. `snapshot_id` is empty for a
+// checkpoint that was coalesced/skipped.
+message Ack {
+  uint64 epoch = 1;
+  string snapshot_id = 2;
+}

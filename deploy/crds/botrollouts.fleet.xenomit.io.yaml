@@ -1,0 +1,426 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: botrollouts.fleet.xenomit.io
+spec:
+  group: fleet.xenomit.io
+  names:
+    kind: BotRollout
+    plural: botrollouts
+    shortNames:
+    - xbr
+    singular: botrollout
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.done
+      name: Done
+      type: integer
+    - jsonPath: .status.total
+      name: Total
+      type: integer
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for BotRolloutSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              aborted:
+                default: false
+                description: |-
+                  Stop the rollout where it stands: pending bots are skipped,
+                  in-flight handoffs finish, rolled bots stay on the target image.
+                type: boolean
+              onGateFailure:
+                default: pause
+                description: What to do when a gate fails (docs/04 §4.1).
+                enum:
+                - pause
+                - rollback
+                type: string
+              paused:
+                default: false
+                description: |-
+                  User-requested hold: no new bots roll while set; in-flight handoffs
+                  finish (docs/04 §4.1 `pause`).
+                type: boolean
+              resumeCount:
+                default: 0
+                description: |-
+                  Monotonic resume token bumped by the API's resume action. Lets a
+                  gate-paused rollout resume without the controller writing its own
+                  spec (docs/04 §4.1 `resume`).
+                format: uint64
+                minimum: 0.0
+                type: integer
+              rollback:
+                default: false
+                description: |-
+                  Hand every successfully rolled bot back to its previous image
+                  (docs/07 §7.5 — same machinery in reverse).
+                type: boolean
+              selector:
+                default:
+                  bots: []
+                description: Which bots the rollout applies to.
+                properties:
+                  bots:
+                    default: []
+                    description: Explicit bot names (also used by canary.bots).
+                    items:
+                      type: string
+                    type: array
+                  channel:
+                    enum:
+                    - stable
+                    - canary
+                    - pinned
+                    - null
+                    nullable: true
+                    type: string
+                type: object
+              strategy:
+                default:
+                  gates:
+                    maxFailedRestores: 0
+                    maxLoginFailureRatePermille: 0
+                  waves:
+                    interWaveDelayS: 120
+                    loginJitterS: 30
+                    maxDraining: 25%
+                    maxOffline: 5
+                properties:
+                  canary:
+                    nullable: true
+                    properties:
+                      bakeMinutes:
+                        default: 0
+                        description: Post-canary soak before wave 1 starts (docs/04 §4.1 `bakeMinutes`).
+                        format: uint32
+                        minimum: 0.0
+                        type: integer
+                      bots:
+                        default: []
+                        description: Pinned canary bots (docs/04 §4.1 example).
+                        items:
+                          type: string
+                        type: array
+                      count:
+                        default: 0
+                        format: uint32
+                        minimum: 0.0
+                        type: integer
+                    type: object
+                  gates:
+                    default:
+                      maxFailedRestores: 0
+                      maxLoginFailureRatePermille: 0
+                    description: |-
+                      Domain gates checked per wave (docs/04 §4.1, extended in phase 7b).
+                      `None`/absent disables that gate. Rates are permille of the bots that
+                      completed a roll attempt (canary + rolled waves so far).
+                    properties:
+                      maxErrorRatePermille:
+                        description: |-
+                          Permille of rolled bots that errored (successor crash, `Failed`,
+                          `Quarantined`, `InvalidConfig`, roll timeout).
+                        format: uint32
+                        minimum: 0.0
+                        nullable: true
+                        type: integer
+                      maxFailedRestores:
+                        default: 0
+                        description: Failed restores (`restore.quality = failed` / strict exit 70).
+                        format: uint32
+                        minimum: 0.0
+                        type: integer
+                      maxLoginFailureRatePermille:
+                        default: 0
+                        description: |-
+                          Permille (2% = 20) of rolled bots that parked in `NeedsHuman`
+                          (login/captcha/credentials) after the roll.
+                        format: uint32
+                        minimum: 0.0
+                        type: integer
+                      maxNeedsHumanPermille:
+                        description: |-
+                          Permille of rolled bots in `NeedsHuman` — same observation as the
+                          login gate, budgeted separately for dashboards.
+                        format: uint32
+                        minimum: 0.0
+                        nullable: true
+                        type: integer
+                      maxNeedsUpdatePermille:
+                        description: |-
+                          Permille of rolled bots that re-parked in `NeedsUpdate` — the new
+                          image still mismatches the game (ci/docs/needsupdate-failsafe.md).
+                        format: uint32
+                        minimum: 0.0
+                        nullable: true
+                        type: integer
+                      maxOfflineWindowMs:
+                        description: |-
+                          Offline-window budget per bot (docs/03 §3.9 p95 ≤ 45 s): any rolled
+                          bot whose measured drain→Running window exceeds it fails the gate.
+                        format: uint64
+                        minimum: 0.0
+                        nullable: true
+                        type: integer
+                      minRewardRateRatio:
+                        description: |-
+                          Reward rate vs the pre-rollout window (docs/06 §6.6); checked only
+                          where a metric sample exists.
+                        format: double
+                        nullable: true
+                        type: number
+                    type: object
+                  waves:
+                    default:
+                      interWaveDelayS: 120
+                      loginJitterS: 30
+                      maxDraining: 25%
+                      maxOffline: 5
+                    properties:
+                      interWaveDelayS:
+                        default: 120
+                        description: Soak between waves (docs/04 §4.1 `interWaveDelay`).
+                        format: uint32
+                        minimum: 0.0
+                        type: integer
+                      loginJitterS:
+                        default: 30
+                        description: Spreads logins inside a wave (login bursts, docs/04 §4.4).
+                        format: uint32
+                        minimum: 0.0
+                        type: integer
+                      maxDraining:
+                        default: 25%
+                        description: |-
+                          Max bots simultaneously draining, percent of fleet ("25%") or an
+                          absolute count ("10").
+                        type: string
+                      maxOffline:
+                        default: 5
+                        description: |-
+                          Hard cap on bots offline at once (docs/03 §3.1 constraint 2).
+                          Bots released from `NeedsUpdate` are exempt — they were already
+                          down (ci/docs/needsupdate-failsafe.md).
+                        format: uint32
+                        minimum: 0.0
+                        type: integer
+                    type: object
+                type: object
+              targetGameVersion:
+                description: |-
+                  Packet-updater game version (`VERSION_HASH` / `upgrade.json` hash)
+                  the target image supports (docs/07 §7.1). Informational today; the
+                  Phase 9 signature/admission machinery binds it to the digest.
+                nullable: true
+                type: string
+              targetImage:
+                description: "`registry/xenomit-botd@sha256:…`"
+                type: string
+            required:
+            - targetImage
+            type: object
+          status:
+            nullable: true
+            properties:
+              bots:
+                default: []
+                description: Per-bot roll bookkeeping.
+                items:
+                  properties:
+                    bot:
+                      description: "`metadata.name` of the `XenomitBot`."
+                      type: string
+                    detail:
+                      default: ""
+                      type: string
+                    expiresAtUnixMs:
+                      description: Hard deadline for the in-flight roll.
+                      format: int64
+                      nullable: true
+                      type: integer
+                    fromImage:
+                      description: Image the bot ran when selected (rollback target).
+                      nullable: true
+                      type: string
+                    fromNeedsUpdate:
+                      default: false
+                      description: |-
+                        The bot was parked `NeedsUpdate` when selected — released, not
+                        drained; exempt from `maxOffline` (ci/docs/needsupdate-failsafe.md).
+                      type: boolean
+                    offlineStartedAtUnixMs:
+                      description: When the bot provably went offline (predecessor drained / release).
+                      format: int64
+                      nullable: true
+                      type: integer
+                    offlineWindowMs:
+                      description: Measured offline window (offline → Running) for the SLO gates.
+                      format: uint64
+                      minimum: 0.0
+                      nullable: true
+                      type: integer
+                    outcome:
+                      description: How a roll attempt ended (`status.bots[].outcome`); feeds the gates.
+                      enum:
+                      - success
+                      - failed_restore
+                      - upgrade_aborted
+                      - login_failure
+                      - needs_update_parked
+                      - fault
+                      - timeout
+                      nullable: true
+                      type: string
+                    readyAtUnixMs:
+                      description: Earliest time the login may start (token bucket + jitter).
+                      format: int64
+                      nullable: true
+                      type: integer
+                    restoreQuality:
+                      description: Restore quality reported by the successor (clean/degraded/failed).
+                      nullable: true
+                      type: string
+                    state:
+                      default: pending
+                      description: Per-bot roll bookkeeping (`status.bots[]`).
+                      enum:
+                      - pending
+                      - rolling
+                      - done
+                      - failed
+                      - skipped
+                      - rollingBack
+                      - rolledBack
+                      type: string
+                    wave:
+                      default: 0
+                      description: 0 = canary set, 1.. = wave index.
+                      format: uint32
+                      minimum: 0.0
+                      type: integer
+                  required:
+                  - bot
+                  type: object
+                type: array
+              canaryDoneAtUnixMs:
+                description: When the canary set finished (bake timer starts here).
+                format: int64
+                nullable: true
+                type: integer
+              completedAtUnixMs:
+                format: int64
+                nullable: true
+                type: integer
+              detail:
+                default: ""
+                description: Human-readable progress / failure detail.
+                type: string
+              done:
+                default: 0
+                description: Bots in a terminal per-bot state (Done/Failed/Skipped/RolledBack).
+                format: uint32
+                minimum: 0.0
+                type: integer
+              gates:
+                default: []
+                description: Latest gate evaluation (docs/04 §4.1 `status.gates`).
+                items:
+                  description: One gate's observed state (docs/04 §4.1 `status.gates`).
+                  properties:
+                    detail:
+                      default: ""
+                      type: string
+                    name:
+                      type: string
+                    passed:
+                      type: boolean
+                  required:
+                  - name
+                  - passed
+                  type: object
+                type: array
+              offlineWindowP95Ms:
+                description: p95 of `bots[].offlineWindowMs` measured so far (docs/03 §3.9 SLO).
+                format: uint64
+                minimum: 0.0
+                nullable: true
+                type: integer
+              pauseCause:
+                description: Why the rollout is in `Paused` (`status.pauseCause`).
+                enum:
+                - user
+                - gate
+                nullable: true
+                type: string
+              phase:
+                default: pending
+                enum:
+                - pending
+                - canarying
+                - done
+                - progressing
+                - paused
+                - aborting
+                - rollingBack
+                - failed
+                - aborted
+                - rolledBack
+                type: string
+              resumeHandled:
+                default: 0
+                description: "`spec.resumeCount` last consumed."
+                format: uint64
+                minimum: 0.0
+                type: integer
+              resumePhase:
+                description: Phase to return to on resume.
+                enum:
+                - pending
+                - canarying
+                - done
+                - progressing
+                - paused
+                - aborting
+                - rollingBack
+                - failed
+                - aborted
+                - rolledBack
+                nullable: true
+                type: string
+              startedAtUnixMs:
+                format: int64
+                nullable: true
+                type: integer
+              total:
+                default: 0
+                format: uint32
+                minimum: 0.0
+                type: integer
+              wave:
+                default: 0
+                description: Current wave (0 while Canarying).
+                format: uint32
+                minimum: 0.0
+                type: integer
+              waveReadyAtUnixMs:
+                description: Next wave may not start before this time (`interWaveDelay`).
+                format: int64
+                nullable: true
+                type: integer
+            type: object
+        required:
+        - spec
+        title: BotRollout
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

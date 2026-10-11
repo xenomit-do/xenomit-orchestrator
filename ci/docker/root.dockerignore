@@ -1,0 +1,63 @@
+# Allow-list .dockerignore for the repos-root build context (docs/07 §7.2
+# build-context note). Copy this file to <repos-root>/.dockerignore.
+#
+# The Rust crates path-depend on siblings, so the context must include every
+# crate an image references — but nothing else (no target/, node_modules/,
+# .git/, game dumps, unrelated repos).
+
+# Deny everything, then allow only what the images need.
+**
+
+# --- xenomit-botd image (xenomit-botd/Dockerfile) -------------------------
+# botd + every path dependency it (and its dev-deps) reference.
+!xenomit-botd/Cargo.toml
+!xenomit-botd/Cargo.lock
+!xenomit-botd/src/**
+!xenomit-botd/benches/**
+!xenomit-botd/tests/**
+!xenomit-botd/schema/**
+!xenomit-bot-runtime/Cargo.toml
+!xenomit-bot-runtime/src/**
+!xenomit-behavior-engine/Cargo.toml
+!xenomit-behavior-engine/src/**
+!xenomit-packet-client/Cargo.toml
+!xenomit-packet-client/src/**
+!xenomit-packet-client/tools/**
+!xenomit-game-api/Cargo.toml
+!xenomit-game-api/src/**
+!xenomit-backpage/Cargo.toml
+!xenomit-backpage/src/**
+!xenomit-core/Cargo.toml
+!xenomit-core/src/**
+!xenomit-mock-game/Cargo.toml
+!xenomit-mock-game/src/**
+
+# --- xenomit-orchestrator image (ci/docker/Dockerfile.orchestrator) -------
+!xenomit-orchestrator/Cargo.toml
+!xenomit-orchestrator/Cargo.lock
+!xenomit-orchestrator/fleet-types/**
+!xenomit-orchestrator/operator/**
+!xenomit-orchestrator/control-gateway/**
+!xenomit-orchestrator/orchestrator-api/**
+
+# --- xenomit-web-panel image (ci/docker/Dockerfile.web-panel) -------------
+!xenomit-web-panel/**
+# …but never the heavyweight/generated dirs:
+xenomit-web-panel/node_modules
+xenomit-web-panel/.next
+xenomit-web-panel/tsconfig.tsbuildinfo
+
+# --- xenomit-packet-updater image (ci/docker/Dockerfile.packet-updater) ---
+!xenomit-packet-updater/**
+
+# --- ci assets COPY'd into images ----------------------------------------
+!xenomit-orchestrator/ci/**
+
+# Global excludes that can sneak into allowed trees.
+**/target
+**/target/**
+**/.git
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/nul

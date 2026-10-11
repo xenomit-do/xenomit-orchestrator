@@ -1,0 +1,57 @@
+# syntax=docker/dockerfile:1
+#
+# `xenomit-orchestrator` — the single-process control-plane image. One
+# binary, `xenomit-orchestratord`, runs the operator drivers, control
+# gateway (:8443) and REST API (:8080) — the Deployment selects behaviour
+# via `--mode kube` args, not a binary name (docs/04 §4.7's split is
+# future work; see ci/gitops/base/operator.yaml).
+#
+# Build context is the repos root (sibling-path-deps rule, docs/07 §7.2):
+#
+#   docker build -f xenomit-orchestrator/ci/docker/Dockerfile.orchestrator \
+#     -t xenomit-orchestrator .
+#
+# The `e2e` workspace member dev-depends on `../../xenomit-mock-game`, so
+# cargo needs that crate's manifest (and its own path-dep chain:
+# packet-client → backpage, game-api) present to resolve the workspace —
+# they are copied but never compiled (`-p orchestratord`).
+#
+# `--features postgres` links the PostgresSnapshotStore; the Deployment
+# passes `--database-url` and falls back to in-memory snapshots when the
+# image is built without it.
+
+FROM rust:1.98-bookworm AS build
+WORKDIR /work
+
+# Sibling crates needed only for e2e's dev-dep path resolution.
+COPY xenomit-mock-game/Cargo.toml   xenomit-mock-game/Cargo.toml
+COPY xenomit-mock-game/src          xenomit-mock-game/src
+COPY xenomit-packet-client/Cargo.toml xenomit-packet-client/Cargo.toml
+COPY xenomit-packet-client/src        xenomit-packet-client/src
+COPY xenomit-backpage/Cargo.toml    xenomit-backpage/Cargo.toml
+COPY xenomit-backpage/src           xenomit-backpage/src
+COPY xenomit-game-api/Cargo.toml    xenomit-game-api/Cargo.toml
+COPY xenomit-game-api/src           xenomit-game-api/src
+
+# Workspace members (manifest resolution needs every member present).
+COPY xenomit-orchestrator/Cargo.toml xenomit-orchestrator/Cargo.lock xenomit-orchestrator/
+COPY xenomit-orchestrator/fleet-types      xenomit-orchestrator/fleet-types
+COPY xenomit-orchestrator/operator         xenomit-orchestrator/operator
+COPY xenomit-orchestrator/control-gateway  xenomit-orchestrator/control-gateway
+COPY xenomit-orchestrator/orchestrator-api xenomit-orchestrator/orchestrator-api
+COPY xenomit-orchestrator/orchestratord    xenomit-orchestrator/orchestratord
+COPY xenomit-orchestrator/plans            xenomit-orchestrator/plans
+COPY xenomit-orchestrator/e2e              xenomit-orchestrator/e2e
+
+WORKDIR /work/xenomit-orchestrator
+RUN cargo build --release --locked -p orchestratord --features postgres \
+ && test -x target/release/xenomit-orchestratord \
+ && mkdir -p /out && cp target/release/xenomit-orchestratord /out/
+
+# Distroless non-root: no shell, uid 65532, matches the botd image.
+FROM gcr.io/distroless/cc-debian12:nonroot
+COPY --from=build /out/ /usr/local/bin/
+
+ENV OTEL_EXPORTER_OTLP_ENDPOINT=""
+USER nonroot
+ENTRYPOINT ["/usr/local/bin/xenomit-orchestratord"]

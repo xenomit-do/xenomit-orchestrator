@@ -1,0 +1,506 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: xenomitbots.fleet.xenomit.io
+spec:
+  group: fleet.xenomit.io
+  names:
+    kind: XenomitBot
+    plural: xenomitbots
+    shortNames:
+    - xb
+    singular: xenomitbot
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.epoch
+      name: Epoch
+      type: integer
+    - jsonPath: .spec.desiredState
+      name: Desired
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for XenomitBotSpec via `CustomResource`
+        properties:
+          spec:
+            description: spec — desired state; lives in etcd, reconciled by `BotController`.
+            properties:
+              account:
+                description: |-
+                  Account identity only — credentials live in Vault, never in the CR
+                  (docs/04 §4.1, ADR-02).
+                properties:
+                  authMode:
+                    default: password
+                    enum:
+                    - password
+                    - session
+                    type: string
+                  credentialsVaultPath:
+                    description: Vault path of the account secret (`secret/data/bots/<id>/account`).
+                    type: string
+                  server:
+                    description: e.g. "int1.darkorbit.com".
+                    type: string
+                required:
+                - credentialsVaultPath
+                - server
+                type: object
+              config:
+                description: Validated against the botd JSON Schema before it ever reaches a pod.
+                properties:
+                  clientKind:
+                    default: packet
+                    description: Pod bots are packet clients only (docs/02 §2.1, ADR-16).
+                    enum:
+                    - packet
+                    type: string
+                  handoff:
+                    description: |-
+                      botd handoff knobs (`handoff.*` in the botd config; operator may
+                      override per rollout, docs/02 §2.2).
+                    nullable: true
+                    properties:
+                      checkpointIntervalS:
+                        default: 15
+                        format: uint32
+                        minimum: 0.0
+                        type: integer
+                      drainDeadlineS:
+                        default: 600
+                        format: uint32
+                        minimum: 0.0
+                        type: integer
+                      hardDeadlineS:
+                        default: 1800
+                        format: uint32
+                        minimum: 0.0
+                        type: integer
+                    type: object
+                  settings:
+                    description: "`BotSettings` JSON (activeModule, modules, behaviors, plugins)."
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                type: object
+              configRevision:
+                default: 0
+                description: Bumped on each edit; drives restart-vs-hot-apply.
+                format: uint64
+                minimum: 0.0
+                type: integer
+              desiredState:
+                default: running
+                description: What the user asked for (spec.desiredState).
+                enum:
+                - running
+                - paused
+                - stopped
+                type: string
+              owner:
+                description: Panel user id; quota/ACL enforced in the API.
+                type: string
+              proxy:
+                default:
+                  mode: pool
+                description: How the bot reaches the game network (docs/04 §4.1, docs/05 §5.4).
+                properties:
+                  fixedAddr:
+                    description: |-
+                      `host:port` of a user-supplied proxy when `mode = fixed` — address
+                      only, never credentials. The API copies it out of the submitted
+                      proxy credentials so the operator can render the egress policy and
+                      probe health without reading secret values back (docs/05 §5.4,
+                      docs/09 §9.1).
+                    nullable: true
+                    type: string
+                  fixedVaultPath:
+                    description: |-
+                      Vault path of a user-supplied proxy when `mode = fixed`; the pool
+                      never touches it (docs/05 §5.4).
+                    nullable: true
+                    type: string
+                  mode:
+                    default: pool
+                    enum:
+                    - pool
+                    - fixed
+                    type: string
+                  selector:
+                    description: Pool selector; ignored when `mode = fixed`.
+                    nullable: true
+                    properties:
+                      country:
+                        default: []
+                        items:
+                          type: string
+                        type: array
+                      tags:
+                        default: []
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                type: object
+              resources:
+                nullable: true
+                properties:
+                  limits:
+                    description: |-
+                      Per-bot requests are a placeholder to benchmark (docs/04 §4.3): "50m",
+                      "64Mi" style quantities.
+                    nullable: true
+                    properties:
+                      cpu:
+                        nullable: true
+                        type: string
+                      memory:
+                        nullable: true
+                        type: string
+                    type: object
+                  requests:
+                    description: |-
+                      Per-bot requests are a placeholder to benchmark (docs/04 §4.3): "50m",
+                      "64Mi" style quantities.
+                    nullable: true
+                    properties:
+                      cpu:
+                        nullable: true
+                        type: string
+                      memory:
+                        nullable: true
+                        type: string
+                    type: object
+                type: object
+              restorePolicy:
+                default: best_effort
+                description: "`best_effort` never strands an account on a bad snapshot (docs/03 §3.5)."
+                enum:
+                - best_effort
+                - strict
+                type: string
+              version:
+                default:
+                  channel: stable
+                properties:
+                  channel:
+                    default: stable
+                    enum:
+                    - stable
+                    - canary
+                    - pinned
+                    type: string
+                  pinnedImage:
+                    description: Image digest when `channel = pinned`.
+                    nullable: true
+                    type: string
+                type: object
+            required:
+            - account
+            - config
+            - owner
+            type: object
+          status:
+            description: status — observed state, written only by the operator.
+            nullable: true
+            properties:
+              activateSnapshotId:
+                description: |-
+                  Snapshot to restore on the next activation; set by restore requests
+                  and cleared once used.
+                nullable: true
+                type: string
+              appliedConfigRevision:
+                default: 0
+                description: |-
+                  Last configRevision the running pod applied; spec drift vs this
+                  drives hot-apply vs handoff (docs/04 §4.5).
+                format: uint64
+                minimum: 0.0
+                type: integer
+              appliedFingerprint:
+                default: ""
+                description: |-
+                  Spec fingerprint of the running pod: image + client kind + proxy +
+                  account. Compared to spec to detect restart-requiring edits.
+                type: string
+              conditions:
+                default: []
+                items:
+                  description: |-
+                    A status condition, shaped like metav1.Condition but self-contained so
+                    fleet-types doesn't depend on k8s-openapi for schema generation.
+                  properties:
+                    lastTransitionUnixMs:
+                      description: Unix milliseconds of the last transition.
+                      format: int64
+                      nullable: true
+                      type: integer
+                    message:
+                      nullable: true
+                      type: string
+                    reason:
+                      nullable: true
+                      type: string
+                    status:
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+              crash:
+                default:
+                  attempts: 0
+                  recentUnixMs: []
+                description: Crash bookkeeping for backoff/quarantine.
+                properties:
+                  attempts:
+                    default: 0
+                    description: Restart attempt count driving the exponential backoff.
+                    format: uint32
+                    minimum: 0.0
+                    type: integer
+                  nextRetryAtUnixMs:
+                    description: Don't start the successor before this time (backoff + jitter).
+                    format: int64
+                    nullable: true
+                    type: integer
+                  recentUnixMs:
+                    default: []
+                    description: Unix-ms timestamps of recent crash exits (inside the budget window).
+                    items:
+                      format: int64
+                      type: integer
+                    type: array
+                type: object
+              deletePodsGone:
+                default: false
+                description: Set once the drain-on-delete has completed (pods gone).
+                type: boolean
+              deletedAtUnixMs:
+                description: |-
+                  Set when the bot is soft-deleted (docs/12 §12.4). Credentials are
+                  already destroyed; snapshots/stats purge after 30 days.
+                format: int64
+                nullable: true
+                type: integer
+              epoch:
+                default: 0
+                description: Current pod generation; incremented for every new pod (docs/03 §3.7).
+                format: uint64
+                minimum: 0.0
+                type: integer
+              handoff:
+                description: In-flight planned handoff (docs/03 §3.2).
+                nullable: true
+                properties:
+                  reason:
+                    description: Why a drain/handoff was initiated (docs/03 §3.2 "Triggers").
+                    enum:
+                    - upgrade
+                    - config_requires_restart
+                    - proxy_change
+                    - manual_restart
+                    - eviction
+                    - desired_state_change
+                    - restore_snapshot
+                    type: string
+                  snapshotId:
+                    description: |-
+                      Snapshot to hand to Activate; filled when the predecessor reports
+                      `Drained`, or preset for `restore_snapshot` requests.
+                    nullable: true
+                    type: string
+                  startedAtUnixMs:
+                    format: int64
+                    type: integer
+                  step:
+                    description: |-
+                      Planned-handoff state machine steps (docs/03 §3.2):
+                      arm successor -> drain predecessor -> (snapshot) -> activate successor.
+                    enum:
+                    - arm
+                    - drain
+                    - activate
+                    type: string
+                  targetEpoch:
+                    description: |-
+                      Monotonically increasing per-bot generation counter.
+
+                      Epoch 0 means "no pod has ever existed"; the first pod is epoch 1.
+                    format: uint64
+                    minimum: 0.0
+                    type: integer
+                  targetImage:
+                    description: |-
+                      Image the successor pod must run when this handoff is a rollout
+                      upgrade (docs/07 §7.3); `None` = the channel/pinned resolution.
+                    nullable: true
+                    type: string
+                required:
+                - reason
+                - startedAtUnixMs
+                - step
+                - targetEpoch
+                type: object
+              image:
+                nullable: true
+                type: string
+              lastExit:
+                description: Recorded pod exit (docs/04 §4.1 `status.lastExit`).
+                nullable: true
+                properties:
+                  atUnixMs:
+                    format: int64
+                    type: integer
+                  code:
+                    description: "`None` = killed by signal / no code reported."
+                    format: int32
+                    nullable: true
+                    type: integer
+                  epoch:
+                    default: 0
+                    description: |-
+                      Monotonically increasing per-bot generation counter.
+
+                      Epoch 0 means "no pod has ever existed"; the first pod is epoch 1.
+                    format: uint64
+                    minimum: 0.0
+                    type: integer
+                  reason:
+                    description: e.g. "upgrade", "crash", "fenced".
+                    type: string
+                required:
+                - atUnixMs
+                - reason
+                type: object
+              lastRestore:
+                description: Restore quality/downtime reported by the successor on activation.
+                nullable: true
+                properties:
+                  downtimeMs:
+                    format: uint64
+                    minimum: 0.0
+                    type: integer
+                  quality:
+                    description: clean | degraded | checkpoint | crash_recovered | fresh.
+                    type: string
+                  snapshotId:
+                    description: Opaque snapshot identifier (`snap_…`).
+                    nullable: true
+                    type: string
+                required:
+                - downtimeMs
+                - quality
+                type: object
+              lastSnapshotId:
+                description: Opaque snapshot identifier (`snap_…`).
+                nullable: true
+                type: string
+              needsHuman:
+                description: Why a bot is in `NeedsHuman` (docs/02 §2.4, docs/08 §8.4).
+                enum:
+                - captcha
+                - credentials
+                - sessionExpired
+                - reenterCredentials
+                - quota
+                nullable: true
+                type: string
+              pendingRequest:
+                description: One-shot API request pending controller pickup.
+                nullable: true
+                properties:
+                  kind:
+                    enum:
+                    - restart
+                    - restore_snapshot
+                    - rearm
+                    type: string
+                  requestedAtUnixMs:
+                    format: int64
+                    type: integer
+                  snapshotId:
+                    description: Opaque snapshot identifier (`snap_…`).
+                    nullable: true
+                    type: string
+                required:
+                - kind
+                - requestedAtUnixMs
+                type: object
+              phase:
+                default: pending
+                description: |-
+                  Operator-visible phase of a bot (docs/01 §1.4). Stored on
+                  `XenomitBot.status.phase` and reported on the control stream.
+                enum:
+                - running
+                - pending
+                - provisioning
+                - armed
+                - starting
+                - draining
+                - snapshotting
+                - terminated
+                - paused
+                - stopped
+                - needsHuman
+                - needsUpdate
+                - failed
+                - quarantined
+                - invalidConfig
+                type: string
+              podName:
+                nullable: true
+                type: string
+              proxyExitIp:
+                description: |-
+                  Observed exit IP of the bot's proxy: the per-bot egress identity
+                  (docs/05 §5.4). Written by the ProxyController from probe results.
+                nullable: true
+                type: string
+              proxyProbeFailures:
+                default: 0
+                description: |-
+                  Consecutive failed proxy probes for `mode = fixed` bots (pool proxies
+                  count on `Proxy.status.consecutiveFailures` instead).
+                format: uint32
+                minimum: 0.0
+                type: integer
+              proxyRef:
+                nullable: true
+                type: string
+              proxyResolvedIp:
+                description: |-
+                  Last resolved proxy IP; the egress NetworkPolicy is rendered from it
+                  and re-rendered when it changes (ops/k8s/20-bot-egress.template.yaml).
+                nullable: true
+                type: string
+              uptimeSeconds:
+                default: 0
+                format: uint64
+                minimum: 0.0
+                type: integer
+            type: object
+        required:
+        - spec
+        title: XenomitBot
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

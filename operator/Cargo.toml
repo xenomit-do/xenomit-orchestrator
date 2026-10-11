@@ -1,0 +1,25 @@
+[package]
+name = "operator"
+description = "BotController reconcile logic for the Xenomit fleet, written against traits so it is fully unit-testable"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+fleet-types.workspace = true
+k8s-openapi.workspace = true
+kube = { workspace = true, features = ["client"] }
+schemars.workspace = true
+serde.workspace = true
+serde-saphyr = "1"
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+tokio-stream.workspace = true
