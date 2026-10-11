@@ -1,0 +1,6 @@
+name: source-check
+on: [push, pull_request, workflow_dispatch]
+permissions: {contents: read}
+jobs:
+  source-check:
+    uses: xenomit-do/xenomit-platform/.github/workflows/source-check.yml@main
