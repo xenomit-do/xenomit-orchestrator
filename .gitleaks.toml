@@ -1,0 +1,6 @@
+[[allowlists]]
+description = "Public immutable Git commit pins are not credentials"
+condition = "AND"
+paths = ['''^ci/source-pins\.json$''']
+regexTarget = "secret"
+regexes = ['''^[0-9a-f]{40}$''']
