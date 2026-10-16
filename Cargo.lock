@@ -4104,6 +4104,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 [[package]]
 name = "xenomit-mock-game"
 version = "0.1.0"
+source = "git+https://github.com/xenomit-do/xenomit-mock-game?tag=v0.1.0#3e199d9fd526bc19a15eb0a2c43a47d72d21d873"
 dependencies = [
  "base64 0.22.1",
  "serde",
