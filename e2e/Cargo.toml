@@ -24,5 +24,5 @@ tempfile = "3"
 tokio.workspace = true
 tokio-stream.workspace = true
 tonic.workspace = true
-xenomit-mock-game = { path = "../../xenomit-mock-game" }
+xenomit-mock-game = { git = "https://github.com/xenomit-do/xenomit-mock-game", tag = "v0.1.0" }
 zeroize.workspace = true
